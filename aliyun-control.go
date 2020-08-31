@@ -4,17 +4,13 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"os"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/aliyun/alibaba-cloud-sdk-go/services/ecs"
 )
 
-var action = flag.String("action", "describeInstances", "-action <action> 必选。目前支持describeInstances, describeSecurityGroups, createSecurityGroup, stopInstance，startInstance，joinSecurityGroup")
-var accessKeyID = flag.String("accessKeyID", "", "-accessKeyID <accessKeyID> 必选。")
-var accessSecret = flag.String("accessSecret", "", "-accessSecret <accessKeyID> 必选。")
-var regionID = flag.String("regionID", "", "-regionID <regionId> 必选。")
-var instanceID = flag.String("instanceID", "", "-instanceID [instanceID] 可选。atcion为stopInstance,startInstance,joinSecurityGroup时需要带上此参数,可通过describeInstances这一action获取。")
-var securityGroupID = flag.String("securityGroupID", "", "-securityGroupID [securityGroupID] 可选。atcion为joinSecurityGroup时需要带上此参数,可通过describeSecurityGroups这一action获取。也可以用createSecurityGroup创建一个默认全block的安全组。")
+var configFilePath = flag.String("configFilePath", "./config.yaml", "-configFilePath <path> 可选，若不存在则会首次启动提示输入参数并自动生成。")
 
 var client *ecs.Client
 
@@ -42,22 +38,21 @@ func describeSecurityGroups() {
 	fmt.Println(string(responseJSON))
 }
 
-func describeInstances() {
-	request := ecs.CreateDescribeInstancesRequest()
+func describeInstanceStatus() {
+	request := ecs.CreateDescribeInstanceStatusRequest()
 	request.Scheme = "https"
 
-	response, err := client.DescribeInstances(request)
+	response, err := client.DescribeInstanceStatus(request)
 	if err != nil {
 		fmt.Print(err.Error())
 	}
-	responseJSON, _ := json.Marshal(response)
-	fmt.Println(string(responseJSON))
+	fmt.Printf("response is %#v\n", response)
 }
 
 func stopInstance() {
 	request := ecs.CreateStopInstanceRequest()
 	request.Scheme = "https"
-	request.InstanceId = *instanceID
+	request.InstanceId = GConfig.InstanceID
 
 	response, err := client.StopInstance(request)
 	if err != nil {
@@ -71,7 +66,7 @@ func startInstance() {
 	request := ecs.CreateStartInstanceRequest()
 	request.Scheme = "https"
 
-	request.InstanceId = *instanceID
+	request.InstanceId = GConfig.InstanceID
 
 	response, err := client.StartInstance(request)
 	if err != nil {
@@ -85,8 +80,8 @@ func joinSecurityGroup() {
 	request := ecs.CreateJoinSecurityGroupRequest()
 	request.Scheme = "https"
 
-	request.SecurityGroupId = *securityGroupID
-	request.InstanceId = *instanceID
+	request.SecurityGroupId = GConfig.SecurityGroupID
+	request.InstanceId = GConfig.InstanceID
 
 	response, err := client.JoinSecurityGroup(request)
 	if err != nil {
@@ -96,15 +91,17 @@ func joinSecurityGroup() {
 }
 
 func main() {
+	log.SetReportCaller(true)
+	log.SetLevel(log.InfoLevel)
+	log.SetFormatter(&log.JSONFormatter{})
+
 	flag.Parse()
-	if *accessKeyID == "" || *accessSecret == "" || *regionID == "" {
-		fmt.Println("accessKeyID和accessSecret是必选参数，请根据教程获取。")
-		os.Exit(1)
-	}
-	client, _ = ecs.NewClientWithAccessKey(*regionID, *accessKeyID, *accessSecret)
-	switch *action {
-	case "describeInstances":
-		describeInstances()
+	LoadConfig(*configFilePath)
+
+	client, _ = ecs.NewClientWithAccessKey(GConfig.RegionID, GConfig.AccessKeyID, GConfig.AccessSecret)
+	switch GConfig.Action {
+	case "describeInstanceStatus":
+		describeInstanceStatus()
 	case "describeSecurityGroups":
 		describeSecurityGroups()
 	case "createSecurityGroup":
